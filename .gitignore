@@ -1,0 +1,10 @@
+bp_starter.tar
+cbp3_traces1.tar.gz
+bp_starter/build
+bp_starter/traces
+bp_starter/trace_test.bz2
+bp_starter/readerlib/
+bp_starter/runs
+bp_starter/generateScore.pl
+bp_starter/cbp3_framework.*
+bp_starter/README.md
