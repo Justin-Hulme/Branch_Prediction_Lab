@@ -8,6 +8,52 @@ using namespace std;
 #include "cbp3_def.h"
 #include "cbp3_framework.h"
 
+class SaturatingCounter{
+    public: 
+    enum State {
+        strongly_not_taken,
+        weakly_not_taken,
+        weakly_taken,
+        strongly_taken
+    };
+    SaturatingCounter(State);
+    bool should_take();
+    void taken(bool was_taken);
+    State get_state();
+    
+    private:
+    State m_state;
+};
+
+SaturatingCounter::SaturatingCounter(SaturatingCounter::State starting_state){
+    m_state = starting_state;
+}
+
+bool SaturatingCounter::should_take(){
+    return m_state == weakly_taken || m_state == strongly_taken;
+}
+
+void SaturatingCounter::taken(bool was_taken){
+    switch (m_state){
+    case strongly_not_taken:
+        m_state = was_taken ? weakly_not_taken : strongly_not_taken;
+        break;
+    case weakly_not_taken:
+        m_state = was_taken ? weakly_taken : strongly_not_taken;
+        break;
+    case weakly_taken:
+        m_state = was_taken ? strongly_taken : weakly_not_taken;
+        break;
+    case strongly_taken:
+        m_state = was_taken ? strongly_taken : weakly_taken;
+        break;
+    }
+}
+
+SaturatingCounter::State SaturatingCounter::get_state(){
+    return m_state;
+}
+
 /*
 # Seperate Predictor Types
 
@@ -43,7 +89,7 @@ uint32_t brh_retire;
 uint32_t runs;
 
 // This function runs ONCE when the simulation starts. Globals
-// state should be initialized here, if there is any that is
+// State should be initialized here, if there is any that is
 // shared between predictors. (There probably will not
 // be any modifications here)
 void PredictorInit() {
@@ -78,7 +124,7 @@ void PredictorRunACycle() {
     actually know if the branch was taken or not, so it can't
     update itself with new information. In the loop below, add
     the logic for predicting whether or not the branch should be
-    taken according to the current state of the predictor. 
+    taken according to the current State of the predictor. 
      */
     for (int i = 0; i < cycle_info->num_fetch; i++) {
         uint32_t fe_ptr = cycle_info->fetch_q[i];
@@ -124,7 +170,7 @@ void PredictorRunACycle() {
     /*
     This loop handles all instsructions during the retire stage of the
     pipeline. At this stage it is known if the branch was actually taken
-    or not (accessible by uop->br_taken variable) so the state of each
+    or not (accessible by uop->br_taken variable) so the State of each
     of the predictors can be updated to reflect the result of the branch
     instruction.
     */
