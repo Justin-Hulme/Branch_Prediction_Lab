@@ -2,11 +2,14 @@
 #include <cassert>
 #include <string.h>
 #include <inttypes.h>
+#include <cmath>
 
 using namespace std;
 
 #include "cbp3_def.h"
 #include "cbp3_framework.h"
+
+#define default_counter_state SaturatingCounter::weakly_taken
 
 class SaturatingCounter{
     public: 
@@ -16,6 +19,7 @@ class SaturatingCounter{
         weakly_taken,
         strongly_taken
     };
+    SaturatingCounter();
     SaturatingCounter(State);
     bool should_take();
     void taken(bool was_taken);
@@ -24,6 +28,8 @@ class SaturatingCounter{
     private:
     State m_state;
 };
+
+SaturatingCounter::SaturatingCounter(){}
 
 SaturatingCounter::SaturatingCounter(SaturatingCounter::State starting_state){
     m_state = starting_state;
@@ -52,6 +58,52 @@ void SaturatingCounter::taken(bool was_taken){
 
 SaturatingCounter::State SaturatingCounter::get_state(){
     return m_state;
+}
+
+class Gshare{
+    public:
+    Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history);
+    ~Gshare();
+    bool should_take(uint32_t address);
+    void taken(bool was_taken, uint32_t address);
+
+    private:
+    SaturatingCounter* m_counter_table;
+    int m_addr_width;
+    uint64_t m_history;
+};
+
+Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history){
+    int table_size = pow(2, addr_width);
+    
+    m_addr_width = addr_width >= 32 ? 31 : addr_width;
+    m_history = default_history;
+
+    m_counter_table = new SaturatingCounter[table_size];
+
+    for (int i = 0; i < table_size; i++){
+        m_counter_table[i] = SaturatingCounter(default_state);
+    }
+}
+
+Gshare::~Gshare(){
+    delete[] m_counter_table;
+}
+
+bool Gshare::should_take(uint32_t address){
+    uint32_t table_idx = address ^ m_history;
+    table_idx &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
+
+    return m_counter_table[table_idx].should_take();
+}
+
+void Gshare::taken(bool was_taken, uint32_t address){
+    uint32_t table_idx = address ^ m_history;
+    table_idx &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
+
+    m_counter_table[table_idx].taken(was_taken);
+
+    m_history = (m_history << 1) | was_taken;
 }
 
 /*
@@ -92,7 +144,12 @@ uint32_t runs;
 // State should be initialized here, if there is any that is
 // shared between predictors. (There probably will not
 // be any modifications here)
+SaturatingCounter* sat_count;
+Gshare* g_share;
+
 void PredictorInit() {
+    sat_count = new SaturatingCounter(default_counter_state);
+    g_share = new Gshare(default_counter_state, 10, 0);
     runs = 0;
 }
 
@@ -137,7 +194,7 @@ void PredictorRunACycle() {
             // below)
 
             // Set `gpred` based off whether or not a branch should be taken
-            bool gpred = true; 
+            bool gpred = sat_count->should_take(); 
 
             assert(report_pred(fe_ptr, false, gpred));
 
@@ -145,9 +202,9 @@ void PredictorRunACycle() {
             // -- PLACE YOUR GSELECT PREDICTION CODE BELOW
             // (only put predictions in this section, updating states happens
             // below)
-
+            
             // Set `gpred` based off whether or not a branch should be taken
-            bool gpred = true; 
+            bool gpred = g_share->should_take(uop->pc); 
 
             assert(report_pred(fe_ptr, false, gpred));
 
@@ -182,8 +239,10 @@ void PredictorRunACycle() {
 
         if (runs == TWO_BIT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE TWO BIT SATURATING COUNTER HERE
+            sat_count->taken(uop->br_taken);
         } else if (runs == GSELECT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSELECT HERE
+            g_share->taken(uop->br_taken, uop->pc);
         } else if (runs == GSHARE_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSHARE HERE
         }
@@ -200,4 +259,6 @@ void PredictorRunEnd() {
 }
 
 void PredictorExit() {
+    delete sat_count;
+    delete g_share;
 }
