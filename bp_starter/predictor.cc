@@ -29,7 +29,9 @@ class SaturatingCounter{
     State m_state;
 };
 
-SaturatingCounter::SaturatingCounter(){}
+SaturatingCounter::SaturatingCounter(){
+    SaturatingCounter(default_counter_state);
+}
 
 SaturatingCounter::SaturatingCounter(SaturatingCounter::State starting_state){
     m_state = starting_state;
