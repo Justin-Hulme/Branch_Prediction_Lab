@@ -2,7 +2,7 @@
 #include <cassert>
 #include <string.h>
 #include <inttypes.h>
-#include <cmath>
+#include "predictor.h"
 
 using namespace std;
 
@@ -11,102 +11,6 @@ using namespace std;
 
 #define default_counter_state SaturatingCounter::weakly_taken
 
-class SaturatingCounter{
-    public: 
-    enum State {
-        strongly_not_taken,
-        weakly_not_taken,
-        weakly_taken,
-        strongly_taken
-    };
-    SaturatingCounter();
-    SaturatingCounter(State);
-    bool should_take();
-    void taken(bool was_taken);
-    State get_state();
-    
-    private:
-    State m_state;
-};
-
-SaturatingCounter::SaturatingCounter(){
-    SaturatingCounter(default_counter_state);
-}
-
-SaturatingCounter::SaturatingCounter(SaturatingCounter::State starting_state){
-    m_state = starting_state;
-}
-
-bool SaturatingCounter::should_take(){
-    return m_state == weakly_taken || m_state == strongly_taken;
-}
-
-void SaturatingCounter::taken(bool was_taken){
-    switch (m_state){
-    case strongly_not_taken:
-        m_state = was_taken ? weakly_not_taken : strongly_not_taken;
-        break;
-    case weakly_not_taken:
-        m_state = was_taken ? weakly_taken : strongly_not_taken;
-        break;
-    case weakly_taken:
-        m_state = was_taken ? strongly_taken : weakly_not_taken;
-        break;
-    case strongly_taken:
-        m_state = was_taken ? strongly_taken : weakly_taken;
-        break;
-    }
-}
-
-SaturatingCounter::State SaturatingCounter::get_state(){
-    return m_state;
-}
-
-class Gshare{
-    public:
-    Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history);
-    ~Gshare();
-    bool should_take(uint32_t address);
-    void taken(bool was_taken, uint32_t address);
-
-    private:
-    SaturatingCounter* m_counter_table;
-    int m_addr_width;
-    uint64_t m_history;
-};
-
-Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history){
-    int table_size = pow(2, addr_width);
-    
-    m_addr_width = addr_width >= 32 ? 31 : addr_width;
-    m_history = default_history;
-
-    m_counter_table = new SaturatingCounter[table_size];
-
-    for (int i = 0; i < table_size; i++){
-        m_counter_table[i] = SaturatingCounter(default_state);
-    }
-}
-
-Gshare::~Gshare(){
-    delete[] m_counter_table;
-}
-
-bool Gshare::should_take(uint32_t address){
-    uint32_t table_idx = address ^ m_history;
-    table_idx &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
-
-    return m_counter_table[table_idx].should_take();
-}
-
-void Gshare::taken(bool was_taken, uint32_t address){
-    uint32_t table_idx = address ^ m_history;
-    table_idx &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
-
-    m_counter_table[table_idx].taken(was_taken);
-
-    m_history = (m_history << 1) | was_taken;
-}
 
 /*
 # Seperate Predictor Types
@@ -146,11 +50,11 @@ uint32_t runs;
 // State should be initialized here, if there is any that is
 // shared between predictors. (There probably will not
 // be any modifications here)
-SaturatingCounter* sat_count;
+Gbasic* g_basic;
 Gshare* g_share;
 
 void PredictorInit() {
-    sat_count = new SaturatingCounter(default_counter_state);
+    g_basic = new Gbasic(default_counter_state, 10);
     g_share = new Gshare(default_counter_state, 10, 0);
     runs = 0;
 }
@@ -196,7 +100,7 @@ void PredictorRunACycle() {
             // below)
 
             // Set `gpred` based off whether or not a branch should be taken
-            bool gpred = sat_count->should_take(); 
+            bool gpred = g_basic->should_take(uop->pc); 
 
             assert(report_pred(fe_ptr, false, gpred));
 
@@ -241,7 +145,7 @@ void PredictorRunACycle() {
 
         if (runs == TWO_BIT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE TWO BIT SATURATING COUNTER HERE
-            sat_count->taken(uop->br_taken);
+            g_basic->taken(uop->br_taken, uop->pc);
         } else if (runs == GSELECT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSELECT HERE
             g_share->taken(uop->br_taken, uop->pc);
@@ -261,6 +165,6 @@ void PredictorRunEnd() {
 }
 
 void PredictorExit() {
-    delete sat_count;
+    delete g_basic;
     delete g_share;
 }
