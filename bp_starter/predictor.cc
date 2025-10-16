@@ -51,11 +51,11 @@ uint32_t runs;
 // shared between predictors. (There probably will not
 // be any modifications here)
 Gbasic* g_basic;
-Gshare* g_share;
+// Gshare* g_share;
 
 void PredictorInit() {
     g_basic = new Gbasic(default_counter_state, 10);
-    g_share = new Gshare(default_counter_state, 10, 0);
+    // g_share = new Gshare(default_counter_state, 10, 0);
     runs = 0;
 }
 
@@ -110,7 +110,7 @@ void PredictorRunACycle() {
             // below)
             
             // Set `gpred` based off whether or not a branch should be taken
-            bool gpred = g_share->should_take(uop->pc); 
+            bool gpred = true; //g_share->should_take(uop->pc); 
 
             assert(report_pred(fe_ptr, false, gpred));
 
@@ -148,7 +148,7 @@ void PredictorRunACycle() {
             g_basic->taken(uop->br_taken, uop->pc);
         } else if (runs == GSELECT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSELECT HERE
-            g_share->taken(uop->br_taken, uop->pc);
+            // g_share->taken(uop->br_taken, uop->pc);
         } else if (runs == GSHARE_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSHARE HERE
         }
@@ -166,5 +166,5 @@ void PredictorRunEnd() {
 
 void PredictorExit() {
     delete g_basic;
-    delete g_share;
+    // delete g_share;
 }
