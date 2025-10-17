@@ -9,3 +9,5 @@ bp_starter/generateScore.pl
 bp_starter/cbp3_framework.*
 bp_starter/README.md
 .vscode/
+build/
+output.txt

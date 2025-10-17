@@ -42,11 +42,12 @@ if [ ! -d "runs" ]; then
 fi
 
 # Run the 16 traces in parallel (denoted by the '&' at the end of the command)
-echo "Starting simulation on all 16 trace simulations"
-for i in {1..16}
-do
-    p=$(printf "%02d" $i)
-    ./build/cbp3 -t traces/CLIENT${p}.bz2 > runs/output_file_${i}.txt &
+N=${1:-16}
+echo "Starting simulation on all $N trace simulations"
+
+for (( i=1; i<=N; i++ )); do
+    p=$(printf "%02d" "$i")
+    ./build/cbp3 -t "traces/CLIENT${p}.bz2" > "runs/output_file_${i}.txt" &
 done
 
 # Wait for each of the traces to finish running (this may take a while)
