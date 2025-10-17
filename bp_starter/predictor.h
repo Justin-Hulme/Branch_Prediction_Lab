@@ -118,20 +118,23 @@ class Gshare{
     public:
     Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history);
     ~Gshare();
+    uint32_t get_table_address(uint32_t address, uint32_t history_register);
     bool should_take(uint32_t address);
     void taken(bool was_taken, uint32_t address);
+    void update_brh_fetch(bool mispredicted);
 
     private:
     SaturatingCounter* m_counter_table;
     int m_addr_width;
-    uint64_t m_history;
+    uint32_t m_brh_fetch;
+    uint32_t m_brh_retire;
 };
 
 inline Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history){
     int table_size = pow(2, addr_width);
     
     m_addr_width = addr_width >= 32 ? 31 : addr_width;
-    m_history = default_history;
+    // m_history = default_history;
 
     m_counter_table = new SaturatingCounter[table_size];
 
@@ -144,20 +147,35 @@ inline Gshare::~Gshare(){
     delete[] m_counter_table;
 }
 
-inline bool Gshare::should_take(uint32_t address){
-    uint32_t table_idx = address ^ m_history;
-    table_idx &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
+inline uint32_t Gshare::get_table_address(uint32_t address, uint32_t history_register){
+    uint32_t table_address = address ^ history_register;
+    table_address &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
+    
+    return table_address;
+}
 
-    return m_counter_table[table_idx].should_take();
+inline bool Gshare::should_take(uint32_t address){
+    uint32_t table_address = get_table_address(address, m_brh_fetch);
+
+    bool prediction = m_counter_table[table_address].should_take();
+
+    m_brh_fetch = (m_brh_fetch << 1) | prediction;
+
+    return prediction;
 }
 
 inline void Gshare::taken(bool was_taken, uint32_t address){
-    uint32_t table_idx = address ^ m_history;
-    table_idx &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
-    
-    m_counter_table[table_idx].taken(was_taken);
+    uint32_t table_address = get_table_address(address, m_brh_retire);
 
-    m_history = (m_history << 1) | was_taken;
+    m_counter_table[table_address].taken(was_taken);
+
+    m_brh_retire = (m_brh_retire << 1) | was_taken;
+}
+
+inline void Gshare::update_brh_fetch(bool mispredicted){
+    if (mispredicted){
+        m_brh_fetch = m_brh_retire;
+    }
 }
 
 

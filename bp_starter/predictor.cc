@@ -55,7 +55,7 @@ Gshare* g_share;
 
 void PredictorInit() {
     g_basic = new Gbasic(default_counter_state, 16);
-    g_share = new Gshare(default_counter_state, 24, 0);
+    g_share = new Gshare(default_counter_state, 16, UINT32_MAX);
     runs = 0;
 }
 
@@ -168,5 +168,5 @@ void PredictorRunEnd() {
 
 void PredictorExit() {
     delete g_basic;
-    // delete g_share;
+    delete g_share;
 }
