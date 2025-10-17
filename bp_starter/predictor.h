@@ -154,7 +154,7 @@ inline bool Gshare::should_take(uint32_t address){
 inline void Gshare::taken(bool was_taken, uint32_t address){
     uint32_t table_idx = address ^ m_history;
     table_idx &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
-
+    
     m_counter_table[table_idx].taken(was_taken);
 
     m_history = (m_history << 1) | was_taken;

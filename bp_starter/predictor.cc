@@ -51,11 +51,11 @@ uint32_t runs;
 // shared between predictors. (There probably will not
 // be any modifications here)
 Gbasic* g_basic;
-// Gshare* g_share;
+Gshare* g_share;
 
 void PredictorInit() {
     g_basic = new Gbasic(default_counter_state, 16);
-    // g_share = new Gshare(default_counter_state, 10, 0);
+    g_share = new Gshare(default_counter_state, 24, 0);
     runs = 0;
 }
 
@@ -111,7 +111,7 @@ void PredictorRunACycle() {
             // below)
             
             // Set `gpred` based off whether or not a branch should be taken
-            bool gpred = true; //g_share->should_take(uop->pc); 
+            bool gpred = g_share->should_take(uop->pc); 
 
             assert(report_pred(fe_ptr, false, gpred));
 
@@ -120,7 +120,7 @@ void PredictorRunACycle() {
             // (only put predictions in this section, updating states happens
             // below)
 
-            // Set `gpred` based off whether or not a branch should be taken
+            // =Set `gpred` based off whether or not a branch should be taken
             bool gpred = true; 
 
             assert(report_pred(fe_ptr, false, gpred));
@@ -147,10 +147,10 @@ void PredictorRunACycle() {
         if (runs == TWO_BIT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE TWO BIT SATURATING COUNTER HERE
             g_basic->taken(uop->br_taken, uop->pc);
-            std::cout << uop->pc << " | " << g_basic->get_table_address(uop->br_taken) << std::endl;
+            //std::cout << uop->pc << " | " << g_basic->get_table_address(uop->br_taken) << std::endl;
         } else if (runs == GSELECT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSELECT HERE
-            // g_share->taken(uop->br_taken, uop->pc);
+            g_share->taken(uop->br_taken, uop->pc);
         } else if (runs == GSHARE_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSHARE HERE
         }
