@@ -30,10 +30,13 @@ inline SaturatingCounter::SaturatingCounter(SaturatingCounter::State starting_st
 }
 
 inline bool SaturatingCounter::should_take(){
+    //std::cout << ((m_state == weakly_taken || m_state == strongly_taken) ? "~ Should take" : "~ Should not take") << std::endl;
     return m_state == weakly_taken || m_state == strongly_taken;
 }
 
 inline void SaturatingCounter::taken(bool was_taken){
+    //std::cout << (was_taken ? "* Take" : "* Not Taken") << std::endl;
+
     switch (m_state){
     case strongly_not_taken:
         m_state = was_taken ? weakly_not_taken : strongly_not_taken;

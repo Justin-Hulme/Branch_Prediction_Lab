@@ -54,7 +54,7 @@ Gbasic* g_basic;
 // Gshare* g_share;
 
 void PredictorInit() {
-    g_basic = new Gbasic(default_counter_state, 10);
+    g_basic = new Gbasic(default_counter_state, 16);
     // g_share = new Gshare(default_counter_state, 10, 0);
     runs = 0;
 }
@@ -100,7 +100,8 @@ void PredictorRunACycle() {
             // below)
 
             // Set `gpred` based off whether or not a branch should be taken
-            bool gpred = g_basic->should_take(uop->pc); 
+            bool gpred = g_basic->should_take(uop->pc);
+            //gpred = true;
 
             assert(report_pred(fe_ptr, false, gpred));
 
@@ -146,6 +147,7 @@ void PredictorRunACycle() {
         if (runs == TWO_BIT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE TWO BIT SATURATING COUNTER HERE
             g_basic->taken(uop->br_taken, uop->pc);
+            std::cout << uop->pc << " | " << g_basic->get_table_address(uop->br_taken) << std::endl;
         } else if (runs == GSELECT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSELECT HERE
             // g_share->taken(uop->br_taken, uop->pc);
