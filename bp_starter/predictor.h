@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cstdint>
 #include <cmath>
+#include <unordered_map>
 
 class SaturatingCounter{
     public: 
@@ -119,8 +120,8 @@ class Gshare{
     Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history);
     ~Gshare();
     uint32_t get_table_address(uint32_t address, uint32_t history_register);
-    bool should_take(uint32_t address);
-    void taken(bool was_taken, uint32_t address);
+    bool should_take(uint32_t address, uint64_t uop_id);
+    void taken(bool was_taken, uint32_t address, uint64_t uop_id);
     void update_brh_fetch(bool mispredicted);
 
     private:
@@ -128,6 +129,14 @@ class Gshare{
     int m_addr_width;
     uint32_t m_brh_fetch;
     uint32_t m_brh_retire;
+
+    struct BranchMetaData{
+        uint32_t brh_fetch;
+        bool prediction;
+    };
+
+    std::unordered_map<uint64_t, BranchMetaData> m_branch_prediction_map;
+    long long m_misprediction_count;
 };
 
 inline Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history){
@@ -141,9 +150,12 @@ inline Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, ui
     for (int i = 0; i < table_size; i++){
         m_counter_table[i] = SaturatingCounter(default_state);
     }
+
+    m_misprediction_count = 0;
 }
 
 inline Gshare::~Gshare(){
+    std::cout << "misprediction count: " << m_misprediction_count << std::endl;
     delete[] m_counter_table;
 }
 
@@ -154,22 +166,36 @@ inline uint32_t Gshare::get_table_address(uint32_t address, uint32_t history_reg
     return table_address;
 }
 
-inline bool Gshare::should_take(uint32_t address){
-    uint32_t table_address = get_table_address(address, m_brh_fetch);
+inline bool Gshare::should_take(uint32_t address, uint64_t uop_id){
+    uint32_t fetch_snapshot = m_brh_fetch;
 
+    uint32_t table_address = get_table_address(address, fetch_snapshot);
     bool prediction = m_counter_table[table_address].should_take();
 
+    
+    m_branch_prediction_map[uop_id] = {m_brh_fetch, prediction};
+    
     m_brh_fetch = (m_brh_fetch << 1) | prediction;
 
     return prediction;
 }
 
-inline void Gshare::taken(bool was_taken, uint32_t address){
-    uint32_t table_address = get_table_address(address, m_brh_retire);
+inline void Gshare::taken(bool was_taken, uint32_t address, uint64_t uop_id){
+    auto it = m_branch_prediction_map.find(uop_id);
+    if (it != m_branch_prediction_map.end()){
+        BranchMetaData meta_data = it->second;
 
-    m_counter_table[table_address].taken(was_taken);
+        uint32_t table_address = get_table_address(address, meta_data.brh_fetch);
+        m_counter_table[table_address].taken(was_taken);
 
-    m_brh_retire = (m_brh_retire << 1) | was_taken;
+        m_brh_retire = (m_brh_retire << 1) | was_taken;
+
+        if (meta_data.prediction != was_taken){
+            m_misprediction_count ++;
+        }
+
+        m_branch_prediction_map.erase(uop_id);
+    }
 }
 
 inline void Gshare::update_brh_fetch(bool mispredicted){

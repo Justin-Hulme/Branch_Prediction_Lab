@@ -55,7 +55,7 @@ Gshare* g_share;
 
 void PredictorInit() {
     g_basic = new Gbasic(default_counter_state, 16);
-    g_share = new Gshare(default_counter_state, 16, UINT32_MAX);
+    g_share = new Gshare(default_counter_state, 16, 0);
     runs = 0;
 }
 
@@ -111,7 +111,7 @@ void PredictorRunACycle() {
             // below)
             
             // Set `gpred` based off whether or not a branch should be taken
-            bool gpred = g_share->should_take(uop->pc); 
+            bool gpred = true;
 
             assert(report_pred(fe_ptr, false, gpred));
 
@@ -121,7 +121,7 @@ void PredictorRunACycle() {
             // below)
 
             // =Set `gpred` based off whether or not a branch should be taken
-            bool gpred = true; 
+            bool gpred = g_share->should_take(uop->pc, uop->uop_id);
 
             assert(report_pred(fe_ptr, false, gpred));
 
@@ -150,9 +150,9 @@ void PredictorRunACycle() {
             //std::cout << uop->pc << " | " << g_basic->get_table_address(uop->br_taken) << std::endl;
         } else if (runs == GSELECT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSELECT HERE
-            g_share->taken(uop->br_taken, uop->pc);
         } else if (runs == GSHARE_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSHARE HERE
+            g_share->taken(uop->br_taken, uop->pc, uop->uop_id);
         }
 
         // -- UPDATE THE `brh_retire` branch history register here. See "hints" in
