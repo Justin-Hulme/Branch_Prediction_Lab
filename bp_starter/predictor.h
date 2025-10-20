@@ -118,10 +118,17 @@ class Gshare{
     public:
     Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history);
     ~Gshare();
-    uint32_t Gshare::get_table_address(uint32_t address){};
+
     bool should_take(uint32_t address);
     void taken(bool was_taken, uint32_t address);
-    SaturatingCounter::State get_State(uint32_t address);
+
+    // For tests:
+    uint32_t get_table_address(uint32_t address);
+
+    SaturatingCounter::State get_State(uint32_t table_idx);
+
+    uint64_t get_history();
+    void set_history(uint64_t hist);
 
     private:
     SaturatingCounter* m_counter_table;
@@ -147,14 +154,6 @@ inline Gshare::~Gshare(){
 }
 
 
-
-inline uint32_t Gshare::get_table_address(uint32_t address){
-    uint32_t table_address = address ^ m_history;
-    table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
-    
-    return table_address;
-}
-
 inline bool Gshare::should_take(uint32_t address){
     uint32_t table_address = get_table_address(address);
 
@@ -170,10 +169,27 @@ inline void Gshare::taken(bool was_taken, uint32_t address){
     m_history = (m_history << 1) | was_taken;
 }
 
-inline SaturatingCounter::State Gshare::get_State(uint32_t address){
-    uint32_t table_address = get_table_address(address);
 
-    return m_counter_table[table_address].get_state();
+
+inline uint32_t Gshare::get_table_address(uint32_t address){
+    uint32_t table_address = address ^ m_history;
+    table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
+    
+    return table_address;
+}
+
+inline SaturatingCounter::State Gshare::get_State(uint32_t table_idx){
+    table_idx &= (1U << m_addr_width) - 1;
+
+    return m_counter_table[table_idx].get_state();
+}
+
+void Gshare::set_history(uint64_t hist) {
+    m_history = hist;
+}
+
+uint64_t Gshare::get_history() {
+    return m_history & (1U << m_addr_width) - 1;
 }
 
 

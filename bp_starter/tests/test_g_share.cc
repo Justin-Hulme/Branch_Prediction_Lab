@@ -35,8 +35,16 @@ int main(){
 
     print_states();
     
-    g_share->taken(false, 0x0);
+    g_share->taken(true, 0x0);
     
+    print_states();
+
+    g_share->taken(false, 0x0);
+
+    print_states();
+
+    g_share->taken(false, 0x0);
+
     print_states();
 
 
