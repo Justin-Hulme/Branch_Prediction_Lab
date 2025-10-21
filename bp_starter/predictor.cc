@@ -51,11 +51,13 @@ uint32_t runs;
 // shared between predictors. (There probably will not
 // be any modifications here)
 Gbasic* g_basic;
+Gselect* g_select;
 Gshare* g_share;
 
 void PredictorInit() {
     g_basic = new Gbasic(default_counter_state, 16);
-    g_share = new Gshare(default_counter_state, 16, 0);
+    g_select = new Gselect(default_counter_state, 24, 5, 0);
+    g_share = new Gshare(default_counter_state, 24, 5, 0);
     runs = 0;
 }
 
@@ -111,17 +113,17 @@ void PredictorRunACycle() {
             // below)
             
             // Set `gpred` based off whether or not a branch should be taken
-            bool gpred = true;
-
+            bool gpred = g_select->should_take(uop->pc);
+            
             assert(report_pred(fe_ptr, false, gpred));
-
+            
         } else if (runs == GSHARE_PREDICTOR_) {
             // -- PLACE YOUR GSHARE PREDICTION CODE BELOW
             // (only put predictions in this section, updating states happens
             // below)
-
+            
             // =Set `gpred` based off whether or not a branch should be taken
-            bool gpred = g_share->should_take(uop->pc, uop->uop_id);
+            bool gpred = g_share->should_take(uop->pc); 
 
             assert(report_pred(fe_ptr, false, gpred));
 
@@ -150,9 +152,10 @@ void PredictorRunACycle() {
             //std::cout << uop->pc << " | " << g_basic->get_table_address(uop->br_taken) << std::endl;
         } else if (runs == GSELECT_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSELECT HERE
+            g_select->taken(uop->br_taken, uop->pc);
         } else if (runs == GSHARE_PREDICTOR_) {
             // -- UPDATE THE STATE OF THE GSHARE HERE
-            g_share->taken(uop->br_taken, uop->pc, uop->uop_id);
+            g_share->taken(uop->br_taken, uop->pc);
         }
 
         // -- UPDATE THE `brh_retire` branch history register here. See "hints" in
@@ -168,5 +171,6 @@ void PredictorRunEnd() {
 
 void PredictorExit() {
     delete g_basic;
+    delete g_select;
     delete g_share;
 }

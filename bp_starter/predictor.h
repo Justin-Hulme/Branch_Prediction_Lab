@@ -114,36 +114,116 @@ inline SaturatingCounter::State Gbasic::get_State(uint32_t address){
     return m_counter_table[table_address].get_state();
 }
 
-
-class Gshare{
+class Gselect{
     public:
-    Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history);
-    ~Gshare();
-    uint32_t get_table_address(uint32_t address, uint32_t history_register);
-    bool should_take(uint32_t address, uint64_t uop_id);
-    void taken(bool was_taken, uint32_t address, uint64_t uop_id);
-    void update_brh_fetch(bool mispredicted);
+    Gselect(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history);
+    ~Gselect();
+
+    bool should_take(uint32_t address);
+    void taken(bool was_taken, uint32_t address);
+
+    // For tests:
+    uint32_t get_table_address(uint32_t address);
+
+    SaturatingCounter::State get_State(uint32_t table_idx);
+
+    uint64_t get_history();
+    void set_history(uint64_t hist);
 
     private:
     SaturatingCounter* m_counter_table;
     int m_addr_width;
-    uint32_t m_brh_fetch;
-    uint32_t m_brh_retire;
-
-    struct BranchMetaData{
-        uint32_t brh_fetch;
-        bool prediction;
-    };
-
-    std::unordered_map<uint64_t, BranchMetaData> m_branch_prediction_map;
-    long long m_misprediction_count;
+    int m_history_width;
+    uint64_t m_history;
 };
 
-inline Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history){
+inline Gselect::Gselect(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history){
     int table_size = pow(2, addr_width);
     
     m_addr_width = addr_width >= 32 ? 31 : addr_width;
-    // m_history = default_history;
+    m_history = default_history;
+    m_history_width = history_width;
+    m_history &= (1U << m_history_width) - 1;
+
+    m_counter_table = new SaturatingCounter[table_size];
+
+    for (int i = 0; i < table_size; i++){
+        m_counter_table[i] = SaturatingCounter(default_state);
+    }
+}
+
+inline Gselect::~Gselect(){
+    delete[] m_counter_table;
+}
+
+
+inline bool Gselect::should_take(uint32_t address){
+    uint32_t table_address = get_table_address(address);
+
+    return m_counter_table[table_address].should_take();
+}
+
+inline void Gselect::taken(bool was_taken, uint32_t address){
+    //uint32_t table_idx = address ^ m_history;
+    //table_idx &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
+    uint32_t table_address = get_table_address(address);
+
+    m_counter_table[table_address].taken(was_taken);
+
+    m_history = (m_history >> 1) | was_taken << m_history_width;
+    m_history &= (1U << m_history_width) - 1;
+}
+
+inline uint32_t Gselect::get_table_address(uint32_t address){
+    uint32_t table_address = address << m_history_width | m_history;
+    table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
+    
+    return table_address;
+}
+
+inline SaturatingCounter::State Gselect::get_State(uint32_t table_idx){
+    table_idx &= (1U << m_addr_width) - 1;
+
+    return m_counter_table[table_idx].get_state();
+}
+
+inline void Gselect::set_history(uint64_t hist) {
+    m_history = hist;
+}
+
+inline uint64_t Gselect::get_history() {
+    return m_history & ((1U << m_addr_width) - 1);
+}
+
+class Gshare{
+    public:
+    Gshare(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history);
+    ~Gshare();
+
+    bool should_take(uint32_t address);
+    void taken(bool was_taken, uint32_t address);
+
+    // For tests:
+    uint32_t get_table_address(uint32_t address);
+
+    SaturatingCounter::State get_State(uint32_t table_idx);
+
+    uint64_t get_history();
+    void set_history(uint64_t hist);
+
+    private:
+    SaturatingCounter* m_counter_table;
+    int m_addr_width;
+    int m_history_width;
+    uint64_t m_history;
+};
+
+inline Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history){
+    int table_size = pow(2, addr_width);
+    
+    m_addr_width = addr_width >= 32 ? 31 : addr_width;
+    m_history = default_history;
+    m_history_width = history_width;
 
     m_counter_table = new SaturatingCounter[table_size];
 
@@ -159,49 +239,43 @@ inline Gshare::~Gshare(){
     delete[] m_counter_table;
 }
 
-inline uint32_t Gshare::get_table_address(uint32_t address, uint32_t history_register){
-    uint32_t table_address = address ^ history_register;
-    table_address &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
+
+inline bool Gshare::should_take(uint32_t address){
+    uint32_t table_address = get_table_address(address);
+
+    return m_counter_table[table_address].should_take();
+}
+
+inline void Gshare::taken(bool was_taken, uint32_t address){
+    //uint32_t table_idx = address ^ m_history;
+    //table_idx &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
+    uint32_t table_address = get_table_address(address);
+
+    m_counter_table[table_address].taken(was_taken);
+
+    m_history = (m_history >> 1) | was_taken << m_history_width;
+    m_history &= (1U << m_history_width) - 1;
+}
+
+inline uint32_t Gshare::get_table_address(uint32_t address){
+    uint32_t table_address = address ^ m_history;
+    table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
     
     return table_address;
 }
 
-inline bool Gshare::should_take(uint32_t address, uint64_t uop_id){
-    uint32_t fetch_snapshot = m_brh_fetch;
+inline SaturatingCounter::State Gshare::get_State(uint32_t table_idx){
+    table_idx &= (1U << m_addr_width) - 1;
 
-    uint32_t table_address = get_table_address(address, fetch_snapshot);
-    bool prediction = m_counter_table[table_address].should_take();
-
-    
-    m_branch_prediction_map[uop_id] = {m_brh_fetch, prediction};
-    
-    m_brh_fetch = (m_brh_fetch << 1) | prediction;
-
-    return prediction;
+    return m_counter_table[table_idx].get_state();
 }
 
-inline void Gshare::taken(bool was_taken, uint32_t address, uint64_t uop_id){
-    auto it = m_branch_prediction_map.find(uop_id);
-    if (it != m_branch_prediction_map.end()){
-        BranchMetaData meta_data = it->second;
-
-        uint32_t table_address = get_table_address(address, meta_data.brh_fetch);
-        m_counter_table[table_address].taken(was_taken);
-
-        m_brh_retire = (m_brh_retire << 1) | was_taken;
-
-        if (meta_data.prediction != was_taken){
-            m_misprediction_count ++;
-        }
-
-        m_branch_prediction_map.erase(uop_id);
-    }
+inline void Gshare::set_history(uint64_t hist) {
+    m_history = hist;
 }
 
-inline void Gshare::update_brh_fetch(bool mispredicted){
-    if (mispredicted){
-        m_brh_fetch = m_brh_retire;
-    }
+inline uint64_t Gshare::get_history() {
+    return m_history & ((1U << m_addr_width) - 1);
 }
 
 
