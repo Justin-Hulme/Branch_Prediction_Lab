@@ -113,10 +113,90 @@ inline SaturatingCounter::State Gbasic::get_State(uint32_t address){
     return m_counter_table[table_address].get_state();
 }
 
+class Gselect{
+    public:
+    Gselect(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history);
+    ~Gselect();
+
+    bool should_take(uint32_t address);
+    void taken(bool was_taken, uint32_t address);
+
+    // For tests:
+    uint32_t get_table_address(uint32_t address);
+
+    SaturatingCounter::State get_State(uint32_t table_idx);
+
+    uint64_t get_history();
+    void set_history(uint64_t hist);
+
+    private:
+    SaturatingCounter* m_counter_table;
+    int m_addr_width;
+    int m_history_width;
+    uint64_t m_history;
+};
+
+inline Gselect::Gselect(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history){
+    int table_size = pow(2, addr_width);
+    
+    m_addr_width = addr_width >= 32 ? 31 : addr_width;
+    m_history = default_history;
+    m_history_width = history_width;
+    m_history &= (1U << m_history_width) - 1;
+
+    m_counter_table = new SaturatingCounter[table_size];
+
+    for (int i = 0; i < table_size; i++){
+        m_counter_table[i] = SaturatingCounter(default_state);
+    }
+}
+
+inline Gselect::~Gselect(){
+    delete[] m_counter_table;
+}
+
+
+inline bool Gselect::should_take(uint32_t address){
+    uint32_t table_address = get_table_address(address);
+
+    return m_counter_table[table_address].should_take();
+}
+
+inline void Gselect::taken(bool was_taken, uint32_t address){
+    //uint32_t table_idx = address ^ m_history;
+    //table_idx &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
+    uint32_t table_address = get_table_address(address);
+
+    m_counter_table[table_address].taken(was_taken);
+
+    m_history = (m_history >> 1) | was_taken << m_history_width;
+    m_history &= (1U << m_history_width) - 1;
+}
+
+inline uint32_t Gselect::get_table_address(uint32_t address){
+    uint32_t table_address = address << m_history_width | m_history;
+    table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
+    
+    return table_address;
+}
+
+inline SaturatingCounter::State Gselect::get_State(uint32_t table_idx){
+    table_idx &= (1U << m_addr_width) - 1;
+
+    return m_counter_table[table_idx].get_state();
+}
+
+inline void Gselect::set_history(uint64_t hist) {
+    m_history = hist;
+}
+
+inline uint64_t Gselect::get_history() {
+    return m_history & ((1U << m_addr_width) - 1);
+}
 
 class Gshare{
     public:
-    Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history);
+    Gshare(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history);
     ~Gshare();
 
     bool should_take(uint32_t address);
@@ -133,14 +213,16 @@ class Gshare{
     private:
     SaturatingCounter* m_counter_table;
     int m_addr_width;
+    int m_history_width;
     uint64_t m_history;
 };
 
-inline Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, uint32_t default_history){
+inline Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history){
     int table_size = pow(2, addr_width);
     
     m_addr_width = addr_width >= 32 ? 31 : addr_width;
     m_history = default_history;
+    m_history_width = history_width;
 
     m_counter_table = new SaturatingCounter[table_size];
 
@@ -167,10 +249,9 @@ inline void Gshare::taken(bool was_taken, uint32_t address){
 
     m_counter_table[table_address].taken(was_taken);
 
-    m_history = (m_history << 1) | was_taken;
+    m_history = (m_history >> 1) | was_taken << m_history_width;
+    m_history &= (1U << m_history_width) - 1;
 }
-
-
 
 inline uint32_t Gshare::get_table_address(uint32_t address){
     uint32_t table_address = address ^ m_history;
@@ -185,12 +266,12 @@ inline SaturatingCounter::State Gshare::get_State(uint32_t table_idx){
     return m_counter_table[table_idx].get_state();
 }
 
-void Gshare::set_history(uint64_t hist) {
+inline void Gshare::set_history(uint64_t hist) {
     m_history = hist;
 }
 
-uint64_t Gshare::get_history() {
-    return m_history & (1U << m_addr_width) - 1;
+inline uint64_t Gshare::get_history() {
+    return m_history & ((1U << m_addr_width) - 1);
 }
 
 
