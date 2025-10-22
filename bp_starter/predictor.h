@@ -14,270 +14,227 @@ class SaturatingCounter{
         weakly_taken,
         strongly_taken
     };
-    SaturatingCounter();
-    SaturatingCounter(State);
-    bool should_take();
-    void taken(bool was_taken);
-    State get_state();
+    SaturatingCounter(){}
+
+    SaturatingCounter(State starting_state){
+        m_state = starting_state;
+    }
+
+    bool should_take(){
+        //std::cout << ((m_state == weakly_taken || m_state == strongly_taken) ? "~ Should take" : "~ Should not take") << std::endl;
+        return m_state == weakly_taken || m_state == strongly_taken;
+    }
+    void taken(bool was_taken){
+        //std::cout << (was_taken ? "* Take" : "* Not Taken") << std::endl;
+
+        switch (m_state){
+        case strongly_not_taken:
+            m_state = was_taken ? weakly_not_taken : strongly_not_taken;
+            break;
+        case weakly_not_taken:
+            m_state = was_taken ? weakly_taken : strongly_not_taken;
+            break;
+        case weakly_taken:
+            m_state = was_taken ? strongly_taken : weakly_not_taken;
+            break;
+        case strongly_taken:
+            m_state = was_taken ? strongly_taken : weakly_taken;
+            break;
+        }
+    }
+    
+    State get_state(){
+        return m_state;
+    }
     
     private:
     State m_state;
 };
 
-inline SaturatingCounter::SaturatingCounter(){}
-
-inline SaturatingCounter::SaturatingCounter(SaturatingCounter::State starting_state){
-    m_state = starting_state;
-}
-
-inline bool SaturatingCounter::should_take(){
-    //std::cout << ((m_state == weakly_taken || m_state == strongly_taken) ? "~ Should take" : "~ Should not take") << std::endl;
-    return m_state == weakly_taken || m_state == strongly_taken;
-}
-
-inline void SaturatingCounter::taken(bool was_taken){
-    //std::cout << (was_taken ? "* Take" : "* Not Taken") << std::endl;
-
-    switch (m_state){
-    case strongly_not_taken:
-        m_state = was_taken ? weakly_not_taken : strongly_not_taken;
-        break;
-    case weakly_not_taken:
-        m_state = was_taken ? weakly_taken : strongly_not_taken;
-        break;
-    case weakly_taken:
-        m_state = was_taken ? strongly_taken : weakly_not_taken;
-        break;
-    case strongly_taken:
-        m_state = was_taken ? strongly_taken : weakly_taken;
-        break;
-    }
-}
-
-inline SaturatingCounter::State SaturatingCounter::get_state(){
-    return m_state;
-}
-
-
 class Gbasic{
     public:
-    Gbasic(SaturatingCounter::State default_state, int addr_width);
-    ~Gbasic();
-    uint32_t get_table_address(uint32_t address);
-    bool should_take(uint32_t address);
-    void taken(bool was_taken, uint32_t address);
-    SaturatingCounter::State get_State(uint32_t address);
+    Gbasic(SaturatingCounter::State default_state, int addr_width){
+        m_addr_width = addr_width >= 32 ? 31 : addr_width;
+
+        int table_size = 1 << m_addr_width;
+
+        m_counter_table = new SaturatingCounter[table_size];
+
+        for (int i = 0; i < table_size; i++){
+            m_counter_table[i] = SaturatingCounter(default_state);
+        }
+    }
+    
+    ~Gbasic(){
+        delete[] m_counter_table;
+    }
+
+    uint32_t get_table_address(uint32_t address){
+        uint32_t table_address = address;
+        table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
+        
+        return table_address;
+    }
+
+    bool should_take(uint32_t address){
+        uint32_t table_address = get_table_address(address);
+
+        return m_counter_table[table_address].should_take();
+    }
+
+    void taken(bool was_taken, uint32_t address){
+        uint32_t table_address = get_table_address(address);
+
+        m_counter_table[table_address].taken(was_taken);
+    }
+    
+    SaturatingCounter::State get_State(uint32_t address){
+        uint32_t table_address = get_table_address(address);
+
+        return m_counter_table[table_address].get_state();
+    }
 
     private:
     SaturatingCounter* m_counter_table;
     int m_addr_width;
 };
-
-inline Gbasic::Gbasic(SaturatingCounter::State default_state, int addr_width){
-    m_addr_width = addr_width >= 32 ? 31 : addr_width;
-
-    int table_size = 1 << m_addr_width;
-
-    m_counter_table = new SaturatingCounter[table_size];
-
-    for (int i = 0; i < table_size; i++){
-        m_counter_table[i] = SaturatingCounter(default_state);
-    }
-}
-
-inline Gbasic::~Gbasic(){
-    delete[] m_counter_table;
-}
-
-inline uint32_t Gbasic::get_table_address(uint32_t address){
-    uint32_t table_address = address;
-    table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
-    
-    return table_address;
-}
-
-inline bool Gbasic::should_take(uint32_t address){
-    uint32_t table_address = get_table_address(address);
-
-    return m_counter_table[table_address].should_take();
-}
-
-inline void Gbasic::taken(bool was_taken, uint32_t address){
-    uint32_t table_address = get_table_address(address);
-
-    m_counter_table[table_address].taken(was_taken);
-}
-
-inline SaturatingCounter::State Gbasic::get_State(uint32_t address){
-    uint32_t table_address = get_table_address(address);
-
-    return m_counter_table[table_address].get_state();
-}
 
 class Gselect{
     public:
-    Gselect(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history);
-    ~Gselect();
+    Gselect(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history){
+        int table_size = pow(2, addr_width);
+        
+        m_addr_width = addr_width >= 32 ? 31 : addr_width;
+        m_history = default_history;
+        m_history_width = history_width;
+        m_history &= (1U << m_history_width) - 1;
 
-    bool should_take(uint32_t address);
-    void taken(bool was_taken, uint32_t address);
+        m_counter_table = new SaturatingCounter[table_size];
+
+        for (int i = 0; i < table_size; i++){
+            m_counter_table[i] = SaturatingCounter(default_state);
+        }
+    }
+
+    ~Gselect(){
+        delete[] m_counter_table;
+    }
+
+    bool should_take(uint32_t address, bool was_taken){
+        uint32_t table_address = get_table_address(address, m_brh_fetch);
+
+        m_brh_fetch = (m_brh_fetch << 1) | was_taken;
+
+        return m_counter_table[table_address].should_take();
+    }
+
+    void taken(bool was_taken, uint32_t address){
+        uint32_t table_address = get_table_address(address, m_brh_retire);
+
+        m_counter_table[table_address].taken(was_taken);
+
+        m_brh_retire = (m_brh_retire << 1) | was_taken;
+    }
 
     // For tests:
-    uint32_t get_table_address(uint32_t address);
+    uint32_t get_table_address(uint32_t address, uint32_t history){
+        
+        uint32_t table_address = (address << m_history_width) | history;
+        table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
+        
+        return table_address;
+    }
 
-    SaturatingCounter::State get_State(uint32_t table_idx);
+    SaturatingCounter::State get_State(uint32_t table_idx){
+        table_idx &= (1U << m_addr_width) - 1;
 
-    uint64_t get_history();
-    void set_history(uint64_t hist);
+        return m_counter_table[table_idx].get_state();
+    }
+
+    uint64_t get_history(){
+        return m_history & ((1U << m_addr_width) - 1);
+    }
+    
+    void set_history(uint64_t hist){
+        m_history = hist;
+    }
 
     private:
     SaturatingCounter* m_counter_table;
     int m_addr_width;
     int m_history_width;
     uint64_t m_history;
+    uint32_t m_brh_fetch;
+    uint32_t m_brh_retire;
 };
-
-inline Gselect::Gselect(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history){
-    int table_size = pow(2, addr_width);
-    
-    m_addr_width = addr_width >= 32 ? 31 : addr_width;
-    m_history = default_history;
-    m_history_width = history_width;
-    m_history &= (1U << m_history_width) - 1;
-
-    m_counter_table = new SaturatingCounter[table_size];
-
-    for (int i = 0; i < table_size; i++){
-        m_counter_table[i] = SaturatingCounter(default_state);
-    }
-}
-
-inline Gselect::~Gselect(){
-    delete[] m_counter_table;
-}
-
-
-inline bool Gselect::should_take(uint32_t address){
-    uint32_t table_address = get_table_address(address);
-
-    return m_counter_table[table_address].should_take();
-}
-
-inline void Gselect::taken(bool was_taken, uint32_t address){
-    //uint32_t table_idx = address ^ m_history;
-    //table_idx &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
-    uint32_t table_address = get_table_address(address);
-
-    m_counter_table[table_address].taken(was_taken);
-
-    m_history = (m_history >> 1) | was_taken << m_history_width;
-    m_history &= (1U << m_history_width) - 1;
-}
-
-inline uint32_t Gselect::get_table_address(uint32_t address){
-    uint32_t table_address = address << m_history_width | m_history;
-    table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
-    
-    return table_address;
-}
-
-inline SaturatingCounter::State Gselect::get_State(uint32_t table_idx){
-    table_idx &= (1U << m_addr_width) - 1;
-
-    return m_counter_table[table_idx].get_state();
-}
-
-inline void Gselect::set_history(uint64_t hist) {
-    m_history = hist;
-}
-
-inline uint64_t Gselect::get_history() {
-    return m_history & ((1U << m_addr_width) - 1);
-}
 
 class Gshare{
     public:
-    Gshare(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history);
-    ~Gshare();
+    Gshare(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history){
+        int table_size = pow(2, addr_width);
+        
+        m_addr_width = addr_width >= 32 ? 31 : addr_width;
+        m_history = default_history;
+        m_history_width = history_width;
+        m_history &= (1U << m_history_width) - 1;
 
-    bool should_take(uint32_t address);
-    void taken(bool was_taken, uint32_t address);
+        m_counter_table = new SaturatingCounter[table_size];
+
+        for (int i = 0; i < table_size; i++){
+            m_counter_table[i] = SaturatingCounter(default_state);
+        }
+    }
+
+    ~Gshare(){
+        delete[] m_counter_table;
+    }
+
+    bool should_take(uint32_t address, bool was_taken){
+        uint32_t table_address = get_table_address(address, m_brh_fetch);
+
+        m_brh_fetch = (m_brh_fetch << 1) | was_taken;
+
+        return m_counter_table[table_address].should_take();
+    }
+
+    void taken(bool was_taken, uint32_t address){
+        uint32_t table_address = get_table_address(address, m_brh_retire);
+
+        m_counter_table[table_address].taken(was_taken);
+
+        m_brh_retire = (m_brh_retire << 1) | was_taken;
+    }
 
     // For tests:
-    uint32_t get_table_address(uint32_t address);
+    uint32_t get_table_address(uint32_t address, uint32_t history){
+        uint32_t table_address = address ^ history;
+        table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
+        
+        return table_address;
+    }
 
-    SaturatingCounter::State get_State(uint32_t table_idx);
+    SaturatingCounter::State get_State(uint32_t table_idx){
+        table_idx &= (1U << m_addr_width) - 1;
 
-    uint64_t get_history();
-    void set_history(uint64_t hist);
+        return m_counter_table[table_idx].get_state();
+    }
+
+    uint64_t get_history(){
+        return m_history & ((1U << m_addr_width) - 1);
+    }
+    
+    void set_history(uint64_t hist){
+        m_history = hist;
+    }
 
     private:
     SaturatingCounter* m_counter_table;
     int m_addr_width;
     int m_history_width;
     uint64_t m_history;
+    uint32_t m_brh_fetch;
+    uint32_t m_brh_retire;
 };
-
-inline Gshare::Gshare(SaturatingCounter::State default_state, int addr_width, int history_width, uint32_t default_history){
-    int table_size = pow(2, addr_width);
-    
-    m_addr_width = addr_width >= 32 ? 31 : addr_width;
-    m_history = default_history;
-    m_history_width = history_width;
-
-    m_counter_table = new SaturatingCounter[table_size];
-
-    for (int i = 0; i < table_size; i++){
-        m_counter_table[i] = SaturatingCounter(default_state);
-    }
-
-    m_misprediction_count = 0;
-}
-
-inline Gshare::~Gshare(){
-    std::cout << "misprediction count: " << m_misprediction_count << std::endl;
-    delete[] m_counter_table;
-}
-
-
-inline bool Gshare::should_take(uint32_t address){
-    uint32_t table_address = get_table_address(address);
-
-    return m_counter_table[table_address].should_take();
-}
-
-inline void Gshare::taken(bool was_taken, uint32_t address){
-    //uint32_t table_idx = address ^ m_history;
-    //table_idx &= (1U << m_addr_width) - 1;   // Mask to only keep lower n bits of table_idx
-    uint32_t table_address = get_table_address(address);
-
-    m_counter_table[table_address].taken(was_taken);
-
-    m_history = (m_history >> 1) | was_taken << m_history_width;
-    m_history &= (1U << m_history_width) - 1;
-}
-
-inline uint32_t Gshare::get_table_address(uint32_t address){
-    uint32_t table_address = address ^ m_history;
-    table_address &= (1U << m_addr_width) - 1;    // Mask to only keep lower n bits of table_idx
-    
-    return table_address;
-}
-
-inline SaturatingCounter::State Gshare::get_State(uint32_t table_idx){
-    table_idx &= (1U << m_addr_width) - 1;
-
-    return m_counter_table[table_idx].get_state();
-}
-
-inline void Gshare::set_history(uint64_t hist) {
-    m_history = hist;
-}
-
-inline uint64_t Gshare::get_history() {
-    return m_history & ((1U << m_addr_width) - 1);
-}
-
 
 inline std::ostream& operator<<(std::ostream& os, SaturatingCounter::State state) {
     switch(state) {

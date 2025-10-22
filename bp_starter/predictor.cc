@@ -113,7 +113,7 @@ void PredictorRunACycle() {
             // below)
             
             // Set `gpred` based off whether or not a branch should be taken
-            bool gpred = g_select->should_take(uop->pc);
+            bool gpred = g_select->should_take(uop->pc, uop->br_taken);
             
             assert(report_pred(fe_ptr, false, gpred));
             
@@ -123,7 +123,7 @@ void PredictorRunACycle() {
             // below)
             
             // =Set `gpred` based off whether or not a branch should be taken
-            bool gpred = g_share->should_take(uop->pc); 
+            bool gpred = g_share->should_take(uop->pc, uop->br_taken); 
 
             assert(report_pred(fe_ptr, false, gpred));
 
